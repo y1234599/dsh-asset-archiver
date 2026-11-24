@@ -26,16 +26,7 @@ DeepSeek Harness 插件：把本地会话与选定的工作区文件归档到阿
 - 私有阿里云 OSS 桶；RAM 子账号至少具备 `ListObjects`、`GetObject`、`PutObject`、`AbortMultipartUpload`（前缀范围内）。
 
 ## 安装
-
-```powershell
-cd F:\ty\Program\TypeScript\dsh-asset-archiver
-npm install
-npm run check          # typecheck + tests + build
-```
-
-然后用 DSH 插件管理安装本目录（`plugin_manager install_bundle`，目标为绝对路径）。本地目录是链接安装，profile 不会代装 `dependencies`，所以安装前必须已有 `node_modules` 与构建产物 `lib/`。
-
-安装/覆盖后，如果入口未更新，对 `include:dsh-asset-archiver` 执行一次 disable/enable 触发重新导入，并刷新 GUI 页面。
+自行安装
 
 ## 使用
 
