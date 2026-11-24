@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "dsh-asset-archiver",
+    "description": "Archive local DSH sessions and selected workspace files by workspace to Alibaba Cloud OSS, then pull and restore them on another device.",
+    "detail": "docs/DETAIL.md"
+  }
+}

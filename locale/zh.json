@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "dsh-asset-archiver",
+    "description": "把本地 DSH 会话与选定的工作区文件按工作区归档到阿里云 OSS，并在另一台设备上拉取、恢复。",
+    "detail": "docs/DETAIL.md"
+  }
+}

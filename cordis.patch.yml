@@ -1,0 +1,4 @@
+- insert:
+    - id: dsh-asset-archiver
+      name: dsh-asset-archiver
+      config: {}
