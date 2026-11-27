@@ -3,7 +3,7 @@ import type { Logger } from './logger.js'
 import { AppError } from './errors.js'
 import {
   requireService,
-  type Agents,
+  type AgentPresets,
   type HostContext,
   type SessionPersistence,
   type SessionWriteHandle,
@@ -35,6 +35,9 @@ export function normalizeHeader(header: SessionHeader, workspacePath: string, kn
     delegationDepth: Number.isSafeInteger(Number(source.delegationDepth)) ? Number(source.delegationDepth) : 0,
   }
   if (normalized.id === '') throw new AppError('E_CORRUPT', '会话包缺少 id', 422)
+  if (typeof source.agentPreset === 'string' && source.agentPreset !== '') {
+    normalized.agentPreset = source.agentPreset
+  }
   if (source.parentSession && knownLocalIds.has(String(source.parentSession))) {
     normalized.parentSession = String(source.parentSession)
     if (source.origin === 'subagent') normalized.origin = 'subagent'
@@ -103,27 +106,34 @@ export async function restoreSession(
     )
   }
 
-  const agents = ctx.get<Agents>('agents')
-  let created = false
   let warning: string | undefined
-  if (agents && typeof agents.create === 'function') {
+  const presets = ctx.get<AgentPresets>('agentPresets')
+  if (presets && typeof presets.resolve === 'function' && header.agentPreset !== undefined) {
+    const requested = header.agentPreset
     try {
-      await agents.create({ sessionId: header.id, meta: header, seed: bundle.events })
-      created = true
+      header.agentPreset = (await presets.resolve(requested)).id
     } catch (error) {
-      if (isSessionTakenError(error)) return { status: 'skipped', id: header.id }
-      warning = `agents.create 失败，已回退到持久化直写：${messageOf(error)}`
-      logger.warn('session.agents_create_failed', { sessionId: header.id, error })
+      try {
+        const fallback = await presets.resolve(undefined)
+        header.agentPreset = fallback.id
+        warning = `会话预设 ${requested} 在当前 DSH 中不存在，已改用默认预设 ${fallback.id}`
+        logger.warn('session.preset_fallback', { sessionId: header.id, requested, fallback: fallback.id, error })
+      } catch {
+        warning = `会话预设 ${requested} 在目标 DSH 中不可解析`
+        logger.warn('session.preset_unresolved', { sessionId: header.id, requested })
+      }
     }
   }
 
-  if (!created) {
-    try {
-      await writeSessionDirect(ctx, header, bundle.events, logger)
-    } catch (error) {
-      if (isSessionTakenError(error)) return { status: 'skipped', id: header.id }
-      throw error
-    }
+  try {
+    // Write the persisted session without publishing a live Agent. A live
+    // Agent created by agents.create() has no preset composition (and thus no
+    // tools); letting DSH resume it later makes session-controller resolve the
+    // recorded agentPreset and mount that preset's tools.
+    await writeSessionDirect(ctx, header, bundle.events, logger)
+  } catch (error) {
+    if (isSessionTakenError(error)) return { status: 'skipped', id: header.id }
+    throw error
   }
 
   knownLocalIds.add(header.id)
@@ -135,6 +145,6 @@ export async function restoreSession(
       logger.warn('session.attach_failed', { sessionId: header.id, workspaceId: workspace.id, error })
     }
   }
-  logger.info('session.restored', { sessionId: header.id, eventCount: bundle.events.length, fallback: !created })
+  logger.info('session.restored', { sessionId: header.id, eventCount: bundle.events.length, agentPreset: header.agentPreset })
   return { status: 'created', id: header.id, ...(warning === undefined ? {} : { warning }) }
 }

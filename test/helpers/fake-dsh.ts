@@ -1,6 +1,6 @@
 import type { SessionEvent, SessionHeader } from '../../src/shared/schema.js'
 import type {
-  Agents,
+  AgentPresets,
   HostContext,
   SessionPersistence,
   SessionPersistenceEntry,
@@ -21,8 +21,6 @@ export interface FakeState {
   restored: Map<string, FakeSession>
   titles: Map<string, string>
   attached: Array<{ workspaceId: string; sessionId: string }>
-  /** Set false to exercise the sessionPersistence fallback. */
-  useAgents: boolean
 }
 
 export interface FakeHost {
@@ -31,11 +29,11 @@ export interface FakeHost {
   registry: WorkspaceRegistry
   persistence: SessionPersistence
   query: SessionQuery
-  agents: Agents
 }
 
 export interface FakeHostOptions {
   workspacePath?: string
+  agentPresets?: AgentPresets
 }
 
 function event(text: string): SessionEvent {
@@ -84,7 +82,6 @@ export function createFakeHost(options: FakeHostOptions = {}): FakeHost {
       ['session-b', '标题 b'],
     ]),
     attached: [],
-    useAgents: true,
   }
 
   const registry: WorkspaceRegistry = {
@@ -144,27 +141,10 @@ export function createFakeHost(options: FakeHostOptions = {}): FakeHost {
     },
   }
 
-  const agents: Agents = {
-    async create({ sessionId, meta, seed }) {
-      if (!state.useAgents) throw new Error('agents disabled')
-      state.restored.set(sessionId, {
-        header: {
-          version: meta.version ?? 4,
-          id: sessionId,
-          createdAt: meta.createdAt ?? 1,
-          cwd: meta.cwd,
-          isSeeded: false,
-          delegationDepth: meta.delegationDepth ?? 0,
-        },
-        events: [...seed],
-      })
-    },
-  }
-
   const ctx: HostContext = {
     get<T>(service: string): T | undefined {
       const services: Record<string, unknown> = { workspaceRegistry: registry, sessionPersistence: persistence, sessionQuery: query }
-      if (state.useAgents) services.agents = agents
+      if (options.agentPresets !== undefined) services.agentPresets = options.agentPresets
       return services[service] as T | undefined
     },
     inject(_names, callback) {
@@ -175,5 +155,5 @@ export function createFakeHost(options: FakeHostOptions = {}): FakeHost {
     },
   }
 
-  return { ctx, state, registry, persistence, query, agents }
+  return { ctx, state, registry, persistence, query }
 }

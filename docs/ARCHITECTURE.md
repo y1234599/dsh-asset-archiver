@@ -44,9 +44,10 @@
 3. **Upload is idempotent by object key.** A workspace key plus session id/file path determines the object; re-upload overwrites.
 4. **Workspace files are opt-in.** Checking only a workspace uploads sessions. Files are uploaded only for `upload.files` selections, and the previous manifest file index is preserved when a later upload contains no files. Selecting a folder selects all selectable files beneath it (keeping their relative paths).
 5. **Download never destroys local data.** Existing local session ids and existing workspace files are skipped.
-6. **File pull is opt-in.** `download` restores files only when `includeFiles === true`; the Client switch defaults to off and resets when another cloud workspace is selected.
-7. **File paths are workspace-relative and contained.** Absolute paths, drive prefixes, `..`, symlinks and files outside the workspace root are rejected. Pull verifies SHA-256 and never overwrites an existing file.
-8. **Format versions are gated.** Bundle/manifest `schemaVersion` and the host session format version are checked before writing.
+6. **Restored sessions keep their preset.** `restore` preserves `header.agentPreset`, writes through `sessionPersistence` without publishing a live bare Agent, and lets DSH resume the session so `session-controller` mounts the preset's tools/persona/skills.
+7. **File pull is opt-in.** `download` restores files only when `includeFiles === true`; the Client switch defaults to off and resets when another cloud workspace is selected.
+8. **File paths are workspace-relative and contained.** Absolute paths, drive prefixes, `..`, symlinks and files outside the workspace root are rejected. Pull verifies SHA-256 and never overwrites an existing file.
+9. **Format versions are gated.** Bundle/manifest `schemaVersion` and the host session format version are checked before writing.
 
 ## Route contract
 
@@ -64,7 +65,8 @@ Actions: `config/get`, `config/save`, `config/test`, `local/workspaces`, `local/
 ## Testing strategy
 
 - Pure units: config, keys, header normalization, workspace-file enumeration/path safety.
-- Use cases + routes: fake Host services + in-memory OSS, including file upload/pull, opt-in file pull and manifest index preservation (35 tests).
+- Use cases + routes: fake Host services + in-memory OSS, including file upload/pull, opt-in file pull, preset preservation/fallback and manifest index preservation (37 tests).
+- Restore: direct persistence, preserved `agentPreset`, missing preset fallback (tested with a fake preset roster).
 - Window: the overlay register/open/close contract is unit-tested with `react-dom/server`; Host route registration is unit-tested.
 - Client: render the registered components and the expanded file tree with `react-dom/server`; pure tree-building/selection tests.
 - Live installation is verified separately (plugin activation, slots, routes, real file listing).

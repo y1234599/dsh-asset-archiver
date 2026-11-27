@@ -58,14 +58,9 @@ export interface SessionQuery {
   readTitleSnapshots(sessionIds: readonly string[]): Promise<SessionTitleObservation[]>
 }
 
-export interface CreateAgentOptions {
-  sessionId: string
-  meta: Partial<SessionHeader> & { cwd?: string }
-  seed: readonly SessionEvent[]
-}
-
-export interface Agents {
-  create(options: CreateAgentOptions): Promise<unknown>
+/** The preset roster used to decide whether a migrated preset still resolves. */
+export interface AgentPresets {
+  resolve(id?: string): Promise<{ id: string }>
 }
 
 export function requireService<T>(ctx: HostContext, name: string): T {

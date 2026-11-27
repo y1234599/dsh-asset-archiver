@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.3
+
+Restored sessions keep their agent preset and tools.
+
+- Preserve `header.agentPreset` during restore instead of dropping it.
+- Write the persisted session directly through `sessionPersistence`; do not publish a live Agent with `agents.create` and no preset setup. DSH now resumes the session through `session-controller`, which resolves the recorded preset and mounts its tool/persona/skill composition.
+- If the recorded preset is absent on the target, fall back to the target default preset and report a warning.
+- Existing sessions pulled with 1.3.2 or earlier must be deleted locally and pulled again; their stored headers have no preset.
+- 37 tests.
+
 ## 1.3.2
 
 - The floating window now uses 50% of the DSH window width and 70% of its height (`50vw × 70vh`), replacing the previous max 1180×820 size.

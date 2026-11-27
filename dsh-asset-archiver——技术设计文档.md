@@ -3,9 +3,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DAA-TDD-001 |
-| 文档版本 | v1.3.2（回退修订版） |
-| 状态 | 浮层窗口；尺寸为 DSH 窗口宽度 50%、高度 70% |
-| 日期 | 2026-11-24 |
+| 文档版本 | v1.3.3（修复版） |
+| 状态 | 恢复会话保留 agent preset，打开时由 DSH 挂载工具 |
+| 日期 | 2026-11-27 |
 | 依据 | 《dsh-asset-archiver——开发说明文档》（以下简称“需求原文”） |
 | 目标宿主 | DeepSeek Harness 0.2.2-rc.5（本机实测基线），Node.js ≥ 24.9 |
 | 适用读者 | 插件开发者、测试、评审人、后续维护者 |
@@ -20,6 +20,7 @@
 | v1.3 | 2026-11-24 | 拉取页新增“同步工作区文件”开关，默认关闭；33 项测试 |
 | v1.3.1 | 2026-11-24 | 回退 1.4.0 独立浏览器页面；改为 shell.overlay 浮层 Dialog；35 项测试 |
 | v1.3.2 | 2026-11-24 | 浮层尺寸改为 DSH 窗口宽度的 50%、高度的 70% |
+| v1.3.3 | 2026-11-27 | 恢复会话保留 agentPreset，改为只落盘、不创建无预设 live Agent；预设缺失回退默认；37 项测试 |
 
 ---
 
@@ -244,7 +245,7 @@ flowchart TB
 | Host | `config.ts` | 定位/创建/校验/原子写 `config.yml`；密钥掩码 | 不读写 profile 的 `cordis.patch.yml` |
 | Host | `oss.ts` | `OssGateway` 接口、`ali-oss` 实现、错误映射 | 不感知会话语义 |
 | Host | `catalog.ts` | 本地工作区/会话编目、目标目录解析 | 不直接改会话文件 |
-| Host | `session-restore.ts` | header 归一、`agents.create` 与持久化回退、工作区挂接 | 不做格式迁移 |
+| Host | `session-restore.ts` | header 归一、保留 agentPreset、持久化直写、预设回退、工作区挂接 | 不做格式迁移 |
 | Host | `app.ts` | 用例编排：配置、云端列表、上传、下载 | 不发布 UI |
 | Host | `routes.ts` | POST-only JSON 路由、请求校验、错误映射、请求日志 | 不放业务逻辑 |
 | Host | `logger.ts` / `dsh.ts` | 结构化脱敏日志；宿主服务最小结构类型 | 不实现业务 |
@@ -261,7 +262,7 @@ flowchart TB
 | D-05 | 覆盖语义：上传按确定对象键覆盖；拉取默认跳过冲突，按 Q2 可显式覆盖（删除本地同 id 后重建） | 拉取时统一删除重建 | 默认安全，破坏性操作需显式选择 |
 | D-06 | 凭据：**已确认（Q4）** 明文写入 `config.yml`，辅以权限收紧与掩码；credentials 迁移仅作后续可选 | 一开始就用 `ctx.credentials` | 私用插件，用户接受明文；保留后续加固空间 |
 | D-07 | OSS SDK：`ali-oss`（纯 JS） | 手写 SigV4；S3 兼容客户端 | 官方 SDK 覆盖分片、重试、进度；避免自实现签名的高风险 |
-| D-08 | 工程：TypeScript strict + esbuild；Host ESM、Client module-loader；`tsc --noEmit` 与 35 项测试 | 纯 JavaScript 直接运行 | V1.0 起以可维护性优先，构建与测试纳入 `npm run check` |
+| D-08 | 工程：TypeScript strict + esbuild；Host ESM、Client module-loader；`tsc --noEmit` 与 37 项测试 | 纯 JavaScript 直接运行 | V1.0 起以可维护性优先，构建与测试纳入 `npm run check` |
 | D-09 | 版本基线：DSH 0.2.2-rc.5、会话格式 V4；不做跨代迁移 | 兼容 V3 宿主 | 迁移需要与 DSH 迁移器同步的复杂逻辑，本期明确不做 |
 | D-10 | 未分组会话：伪工作区 `_ungrouped` | 忽略 | 备份完整性；拉取时按新工作区流程处理即可复用现有代码 |
 
@@ -840,18 +841,20 @@ else:
 5. header 归一：
    cwd = 目标工作区 canonical path（绝对路径）
    parentSession：若父会话在本地不存在 → 删除并标记 warning
-   agentPreset：若本地不存在该 preset → 删除并标记 warning
+   agentPreset：保留；若目标 agentPresets.resolve 找不到该 id，
+               则 resolve(undefined) 回退默认预设并标记 warning
    其他白名单字段原样保留
-6. agents.create({ sessionId, meta: header, seed: events, agentOptions: 默认模型 })
-   失败且非“id 已存在” → 回退 sessionPersistence.create(header) + handle.append(events) + flush + close
-7. workspace.attachSession(sessionId)（按需；宿主按 cwd 归组，attach 保证确定性）
+6. sessionPersistence.create(header) + handle.append(events) + flush + close
+   只落盘，不调用 agents.create；不能创建一个没有 preset 组合的 live Agent
+7. workspace.attachSession(sessionId)（按宿主的 cwd 校验归组）
 8. 记入 state.json 绑定与 lastPulledAt
 ```
 
 说明：
 
-- `agents.create` 会通知客户端会话列表，导入后无需刷新；回退路径只落盘，需要提示“请刷新会话列表”（P2 可改进为主动刷新）。
-- `attachSession` 失败不阻断会话创建，但该项标记 `warning: ungrouped`，并在结果中提示“会话已导入但未归组”。
+- 只落盘的会话不会主动通知客户端，拉取后需刷新会话列表；打开会话时 DSH 的 `session-controller` 读取 `header.agentPreset`，调用 `composeAgent`/`agentPresets.mount`，工具、persona 与 skill 才会恢复。
+- `attachSession` 失败不阻断会话创建，但该项标记 warning，并在结果中提示“会话已导入但未归组”。
+- 1.3.2 及更早版本已经落盘的会话 header 没有 `agentPreset`，需要删除本地副本后重新拉取。
 - 不删除、不修改任何本地已有会话；`copy` 产生新 id，可能造成同一会话多份，需在 UI 明示。
 
 #### 7.3.4 冲突与批量
@@ -1043,8 +1046,9 @@ sequenceDiagram
   H->>W: create(path, cloudName)（不存在时）
   loop 每个会话
     H->>H: GET + 校验 + 改写 cwd
-    H->>A: agents.create({meta, seed})
+    H->>P: sessionPersistence.create(header) + append(seed)
     H->>W: attachSession(id)
+    Note over H: DSH 打开时按 header.agentPreset 挂载工具
   end
   H-->>C: Job 结果
   C-->>U: “已导入 N 个会话”
@@ -1341,7 +1345,7 @@ npm run check
 
 - Host：`src/host/index.ts` → `lib/index.js`（ESM，`ali-oss` external，附 sourcemap）。
 - Client：`src/client/index.tsx` → CJS bundle，再用 `window.__ModuleLoader__.load({id, factory})` 包装为 `lib/client.js`；`react` external。
-- 测试：`tsx --test` 运行 8 个测试文件（35 项）；不依赖浏览器或真实 OSS。
+- 测试：`tsx --test` 运行 8 个测试文件（37 项）；不依赖浏览器或真实 OSS。
 - 构建产物需满足 `node --check lib/index.js` 与 `node --check lib/client.js`。
 
 ### 13.4 从 demo 到 V1.0 的整改
@@ -1351,7 +1355,7 @@ npm run check
 | 语言 | ESM JavaScript | TypeScript strict |
 | 构建 | 无 | esbuild 双入口（Host ESM / Client ModuleLoader） |
 | 结构 | 单文件 `host.js` / `client.js` | Host 多模块、Client 组件化、shared 契约与 schema |
-| 测试 | 4 个临时脚本 | 22 项（V1.3.2 为 35 项）`node:test`（配置/键/文件/文件树/会话恢复/路由/窗口/客户端渲染） |
+| 测试 | 4 个临时脚本 | 22 项（V1.3.3 为 37 项）`node:test`（配置/键/文件/文件树/会话恢复/路由/窗口/客户端渲染） |
 | 日志 | console | 结构化 JSON + 脱敏 |
 | 文档 | README + DETAIL | 另加 ARCHITECTURE、CHANGELOG、LICENSE |
 
@@ -1532,7 +1536,7 @@ wisdom-academy/
 
 ### 17.4 验证
 
-- 35 项测试通过：文件树构建/半选状态、文件枚举/截断/超限、路径安全、读哈希、写入不覆盖、浮层窗口注册/开关状态，以及路由层“会话+文件”上传、manifest 索引保留、开关关闭仅会话、开关打开拉取文件、二次拉取跳过。
+- 37 项测试通过：文件树构建/半选状态、文件枚举/截断/超限、路径安全、读哈希、写入不覆盖、浮层窗口注册/开关状态、agentPreset 保留/缺失回退，以及路由层“会话+文件”上传、manifest 索引保留、开关关闭仅会话、开关打开拉取文件、二次拉取跳过。
 - 运行中的 DSH：`local/files` 对真实工作区返回 21 个文件、忽略 1 个目录；`cloud/workspaces` 返回 5 个工作区且 `fileCount` 字段可用。
 - 未验证：真实 OSS 文件写入（避免改动用户云端数据）、GUI 展开/勾选后的视觉呈现。
 
@@ -1553,10 +1557,40 @@ wisdom-academy/
 
 ### 18.3 验证
 
-- 35 项测试通过；客户端测试验证 `sidebar.footer.action` + `shell.overlay` 注册、关闭态不渲染、打开态渲染 Dialog、关闭后恢复为空。
+- 37 项测试通过；客户端测试验证 `sidebar.footer.action` + `shell.overlay` 注册、关闭态不渲染、打开态渲染 Dialog、关闭后恢复为空。
 - 运行中的 DSH：`shell.overlay` 出现 `asset-archiver.window`（active）；入口 order 100。
 - 浏览器 harness（1280×860）：遮罩 Dialog 按 `50vw × 70vh` 计算为约 640×602；关闭按钮、点击遮罩、Esc 三种关闭方式均生效，无页面错误。
 - 未验证：浮层与 DSH 完整页面叠加时的最终层级/指针行为（槽位与 SSR 已确认，视觉 harness 独立验证）。
+
+## 19. V1.3.3：会话预设与工具恢复
+
+### 19.1 现象与根因
+
+- 现象：迁移到另一台设备后，会话可以打开、历史可见，但模型没有 `read`/`bash` 等工具。
+- 根因一：`normalizeHeader` 丢弃了 `header.agentPreset`，DSH 无法知道该会话应运行哪个预设。
+- 根因二：恢复时调用 `agents.create({meta, seed})` 却没有 `setup`；它发布了一个**没有加入 agent preset 的 live Agent**。工具、persona 与 skill 来自 preset 组合，因此该 Agent 的工具层为空。
+- 这与 DSH 社区多个问题一致：resume 不 join preset 会丢 preset-only 工具；导入/恢复会话必须保留 `agentPreset`。
+
+### 19.2 修复
+
+- `normalizeHeader` 保留非空 `agentPreset`。
+- 恢复改为 `sessionPersistence.create(header) + append(events)`：只落盘，不发布 live Agent。用户打开会话时，DSH `session-controller` 会读取 `agentPreset` 投影，`composeAgent` 并 `agentPresets.mount`，工具恢复。
+- 若目标 DSH 没有该预设：先 `agentPresets.resolve(id)`，失败则 `resolve(undefined)` 回退默认预设，并在结果 warning 中说明；连默认预设也不可用时保留原 id 并 warning。
+- 旧版已落盘会话没有 preset，需要删除本地副本后重新拉取。
+
+### 19.3 社区讨论
+
+- [#7940 Resuming a session never joins its agent preset](https://github.com/deepseek-ai/deepseek-harness/discussions/7940) — resume 分支没有 mount preset，preset-only 工具静默消失。
+- [#10862 Session resume drops all core tools from the tool registry](https://github.com/deepseek-ai/deepseek-harness/discussions/10862) — 直接对比 tool registry，resume 后大量工具被移除。
+- [#12566 ACP server: compose a configured agent preset for new and resumed sessions](https://github.com/deepseek-ai/deepseek-harness/discussions/12566) — 没有 preset composition 的会话工具为空。
+- [#9055 importing a session store from another host produces silently unusable sessions](https://github.com/deepseek-ai/deepseek-harness/discussions/9055) — 手工迁移 session store 的完整性问题。
+- [#5657 用 code 预设创建的会话无法 resume: preset "code" not found](https://github.com/deepseek-ai/deepseek-harness/discussions/5657) — preset 改名后旧 id 不存在，需要回退/别名。
+
+### 19.4 验证
+
+- 37 项测试通过：保留 agentPreset、目标可解析、目标缺失回退默认、缺失 preset 保持缺失。
+- 旧版已拉取会话的行为未自动修复，需要删除后重拉。
+- 未验证：真实 DSH GUI 打开恢复会话后的工具列表；测试使用宿主服务替身。
 
 ---
 

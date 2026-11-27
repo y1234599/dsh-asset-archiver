@@ -17,7 +17,7 @@ DeepSeek Harness 插件：把本地会话与选定的工作区文件归档到阿
 - 拉取：浏览云端工作区，选择本地目录；
   - 默认只恢复会话，不拉取工作区文件；
   - 卡片工作区名右侧的「同步工作区文件」开关打开后，才会同时拉取已归档的文件；切换到其他工作区时开关恢复关闭；
-- 恢复通过 DSH 原生服务完成：`agents.create` 优先，失败回退 `sessionPersistence.create`，随后 `attachSession`；已存在的同 id 会话与同路径文件跳过；
+- 恢复写入持久化会话（不创建无预设的 live Agent），并保留 `header.agentPreset`；DSH 打开会话时按该预设挂载工具、persona 与 skill；目标没有该预设时回退默认预设并提示；已存在的同 id 会话与同路径文件跳过；
 - Host 结构化日志（AccessKey 与敏感字段脱敏）。
 
 ## 环境
@@ -26,7 +26,47 @@ DeepSeek Harness 插件：把本地会话与选定的工作区文件归档到阿
 - 私有阿里云 OSS 桶；RAM 子账号至少具备 `ListObjects`、`GetObject`、`PutObject`、`AbortMultipartUpload`（前缀范围内）。
 
 ## 安装
-自行安装
+
+1. 在 DSH 的 **插件 / Plugins** 页面选择 **添加插件**，指向本目录的绝对路径；或由 Agent 用 `plugin_manager` 的 `install_bundle` 安装。
+2. 安装后启用 `include:dsh-asset-archiver`。
+3. 安装依赖由 DSH 的插件管理器执行，需要 **pnpm**：
+   - DSH Desktop 安装包自带 pnpm，通常无需系统安装；
+   - DSH Web、CLI、源码启动或 npm 安装的 dsh 需要 `pnpm` 在 `PATH` 中。
+
+### `spawn pnpm ENOENT` / 退出码 127
+
+这表示 DSH 找不到 `pnpm` 可执行文件，不是插件代码错误。先安装并验证：
+
+```powershell
+node --version
+npm --version
+npm install -g pnpm
+pnpm --version
+where.exe pnpm
+```
+
+如果 `pnpm --version` 仍不可用，通常是 npm 全局目录不在 `PATH`：
+
+```powershell
+npm config get prefix
+# 将输出目录（通常是 %APPDATA%\npm）加入用户 PATH，然后重开终端
+```
+
+然后**完全退出 DSH 并重新启动**（Windows 从托盘退出，不能只刷新页面），再从新终端启动 Web/CLI。
+
+macOS / Linux：
+
+```bash
+npm install -g pnpm
+pnpm --version
+command -v pnpm
+```
+
+补充说明：
+
+- 没有 Node/npm 时，先安装 Node.js 24 LTS；仅安装 DSH Desktop 不会自动把 pnpm 暴露到系统 `PATH`。
+- 不要用“手动复制插件目录”代替安装；DSH 需要 pnpm 把插件登记到 profile 并安装 `ali-oss` 依赖。
+- 如果使用 DSH Desktop 仍报同样错误，请确认操作的是桌面应用的插件页，而不是浏览器里另开的 `dsh web` 会话；必要时安装系统 pnpm 作为兼容方案，并反馈 DSH 版本。
 
 ## 使用
 
@@ -47,7 +87,9 @@ DeepSeek Harness 插件：把本地会话与选定的工作区文件归档到阿
    - 「上传全部工作区」上传所有会话，并只上传已勾选的文件。
 5. 在另一台设备（或新目录）「拉取」页刷新云端、选择工作区、选择本地目录；
    - 需要文件时打开工作区名右侧的「同步工作区文件」开关，默认关闭；
-   - 拉取会恢复会话；开关打开时同时恢复文件。
+   - 拉取会恢复会话；开关打开时同时恢复文件；
+   - **1.3.2 及更早版本已拉取的会话没有保存 agent preset，需删除本地副本后重新拉取**，否则会保留“无工具”状态。
+   - 拉取只写入会话记录；如果 DSH 侧栏尚未出现新会话，刷新一次会话列表即可。
 
 ## 浮层窗口说明
 
@@ -92,7 +134,7 @@ DeepSeek Harness 插件：把本地会话与选定的工作区文件归档到阿
 
 ```powershell
 npm run typecheck   # tsc --noEmit
-npm test            # node:test via tsx（35 项）
+npm test            # node:test via tsx（37 项）
 npm run build       # esbuild -> lib/index.js + lib/client.js
 npm run check       # 全部执行
 ```
