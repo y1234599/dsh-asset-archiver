@@ -1,4 +1,4 @@
-# dsh-asset-archiver 1.3.3
+# dsh-asset-archiver 1.3.4
 
 ## 用途
 

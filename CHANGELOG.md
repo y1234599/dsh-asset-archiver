@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.4
+
+Fix wheel scrolling in the upload page.
+
+- The workspace card was a shrinking flex item inside the page body. With many workspaces or an expanded file tree it was clipped to the body height instead of overflowing, so the body had no scroll range and wheel input appeared dead.
+- The shared card style now uses `flex-shrink: 0`; the upload body overflows and scrolls normally, and the inner file tree keeps its own 280px scrollport.
+- Browser harness: 20 workspaces now produce a 1120px scroll body (505px viewport) and wheel scrolls it; the file tree still scrolls independently.
+
 ## 1.3.3
 
 Restored sessions keep their agent preset and tools.

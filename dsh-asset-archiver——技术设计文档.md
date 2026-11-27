@@ -3,8 +3,8 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档编号 | DAA-TDD-001 |
-| 文档版本 | v1.3.3（修复版） |
-| 状态 | 恢复会话保留 agent preset，打开时由 DSH 挂载工具 |
+| 文档版本 | v1.3.4（修复版） |
+| 状态 | 上传页工作区卡片不再被 flex 压缩，内容超出时页面可滚动 |
 | 日期 | 2026-11-27 |
 | 依据 | 《dsh-asset-archiver——开发说明文档》（以下简称“需求原文”） |
 | 目标宿主 | DeepSeek Harness 0.2.2-rc.5（本机实测基线），Node.js ≥ 24.9 |
@@ -21,6 +21,7 @@
 | v1.3.1 | 2026-11-24 | 回退 1.4.0 独立浏览器页面；改为 shell.overlay 浮层 Dialog；35 项测试 |
 | v1.3.2 | 2026-11-24 | 浮层尺寸改为 DSH 窗口宽度的 50%、高度的 70% |
 | v1.3.3 | 2026-11-27 | 恢复会话保留 agentPreset，改为只落盘、不创建无预设 live Agent；预设缺失回退默认；37 项测试 |
+| v1.3.4 | 2026-11-27 | 上传页卡片改为 `flex-shrink:0`，修复内容超出时页面无滚动范围、滚轮失效 |
 
 ---
 
@@ -1591,6 +1592,31 @@ wisdom-academy/
 - 37 项测试通过：保留 agentPreset、目标可解析、目标缺失回退默认、缺失 preset 保持缺失。
 - 旧版已拉取会话的行为未自动修复，需要删除后重拉。
 - 未验证：真实 DSH GUI 打开恢复会话后的工具列表；测试使用宿主服务替身。
+
+## 20. V1.3.4：上传页滚轮失效
+
+### 20.1 现象
+
+- 上传页工作区/文件内容超出浮层可见高度后，鼠标滚轮无法下滑，后面的工作区或文件无法选择。
+- 文件树自身有 `max-height:280px; overflow:auto`，但当工作区卡片被压缩到页面高度时，卡片底部的树与外层列表被裁切。
+
+### 20.2 根因
+
+- `S.body` 是 `display:flex; flex-direction:column; overflow:auto`。
+- `S.card` 是它的直接 flex 子项，默认 `flex-shrink:1`；内容高于 body 时，卡片被压缩而不是让 body 产生滚动范围。
+- body 的 `scrollHeight === clientHeight`，因此滚轮没有可滚动目标；卡片 `overflow:hidden` 又把超出部分裁掉。
+- 浏览器 harness 复现：20 个工作区时 body 仍只有 505px，卡片被压缩，工作区 2 以后不可见；修复后 body `scrollHeight=1120`，滚轮可滚到 500。
+
+### 20.3 修复
+
+- `S.card` 增加 `flexShrink:0`，使卡片保持内容高度；上传页 body 产生真实溢出并滚动。
+- 文件树自身仍保留 `max-height:280px; overflow:auto`，内层滚动不受影响。
+- 拉取页的详情卡显式使用 `flex:"1 1 auto"`，覆盖全局 `flexShrink:0`，窄窗口仍可收缩。
+
+### 20.4 验证
+
+- 37 项测试通过；`WorkspaceTable` SSR 断言包含 `flex-shrink:0`、`max-height:280px`、`overflow:auto`。
+- 浏览器 harness（1280×860）：20 个工作区时外层可滚（1120/505，滚轮 top=500），文件树内层可独立滚（536/280，top=255）。
 
 ---
 

@@ -74,6 +74,9 @@ export const S: Styles = {
     borderRadius: '10px',
     background: 'var(--dsw-alias-bg-layer-1)',
     overflow: 'hidden',
+    // Cards live in the scrollable page body; without this the column flex
+    // layout shrinks the card instead of letting the body overflow and scroll.
+    flexShrink: 0,
   },
   row: {
     display: 'flex',

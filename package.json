@@ -1,6 +1,6 @@
 {
   "name": "dsh-asset-archiver",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "private": true,
   "description": "Archive DSH workspaces, sessions and selected workspace files to Aliyun OSS and restore them on another device.",
   "type": "module",

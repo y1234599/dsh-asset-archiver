@@ -120,6 +120,9 @@ test('workspace file panel renders files and the opt-in note', () => {
   assert.match(html, /超过上限/)
   assert.match(html, /已忽略/)
   assert.match(html, /目录\/特殊文件/)
+  assert.match(html, /flex-shrink:0/)
+  assert.match(html, /max-height:280px/)
+  assert.match(html, /overflow:auto/)
 })
 
 test('download result hides file counters when files were not pulled', () => {
